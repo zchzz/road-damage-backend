@@ -1,0 +1,6 @@
+path: /home/bagustris/github/road-damage-detection/yolo_dataset
+train: mwpd/train/images
+val: mwpd/val/images
+nc: 1
+names:
+  - Pothole

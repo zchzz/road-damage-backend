@@ -1,0 +1,15 @@
+ultralytics>=8.0.0
+opencv-python>=4.8.0
+numpy>=1.26.0
+pytubefix>=9.4.0
+Pillow>=10.0.0
+matplotlib>=3.7.0
+torch>=1.13.0
+torchvision>=0.14.0
+pandas>=2.0.0
+tqdm>=4.66.0
+seaborn>=0.12.0
+roboflow>=1.2.0
+supervision>=0.16.0
+PyYAML>=6.0.0
+gradio>=4.44.0

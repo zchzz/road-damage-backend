@@ -1,0 +1,7 @@
+train: /content/drive/MyDrive/yolov9/PD/train/images
+val: /content/drive/MyDrive/yolov9/PD/valid/images
+test: /content/drive/MyDrive/yolov9/PD/test/images
+
+nc: 1
+names: ['Potholes']
+

@@ -1,0 +1,9 @@
+path: C:\Users\Administrator\Desktop\road-damage-detection-master\yolo_dataset
+train: rdd2022/train/images
+val: rdd2022/val/images
+nc: 4
+names:
+  - Longitudinal Crack
+  - Transverse Crack
+  - Alligator Crack
+  - Potholes
