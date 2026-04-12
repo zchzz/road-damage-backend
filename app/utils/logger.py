@@ -1,12 +1,14 @@
 import logging
 from pathlib import Path
-from app.config import LOG_DIR
+from app.config import LOG_DIR, ensure_directories
 
 
 def get_logger(name: str) -> logging.Logger:
     logger = logging.getLogger(name)
     if logger.handlers:
         return logger
+
+    ensure_directories()
 
     logger.setLevel(logging.INFO)
 
