@@ -51,6 +51,10 @@ dist/
 *.onnx
 *.engine
 
+# 仅放行当前部署要用的权重
+!algorithm/weights/
+!algorithm/weights/best.pt
+
 # Media / temp
 *.mp4
 *.avi

@@ -1,10 +1,14 @@
 from pathlib import Path
 import json
+import os
 import sys
+
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 SOURCE_PROJECT_DIR = BASE_DIR / "algorithm" / "source_project"
 WEIGHTS_DIR = BASE_DIR / "algorithm" / "weights"
+DEFAULT_MODEL_FILE = WEIGHTS_DIR / "best.pt"
+
 
 if str(SOURCE_PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(SOURCE_PROJECT_DIR))
@@ -15,7 +19,41 @@ from road_damage_detector import RoadDamageDetector
 def _normalize_class_distribution(class_distribution: dict | None) -> dict:
     if not class_distribution:
         return {}
+
     return {str(k): int(v) for k, v in class_distribution.items()}
+
+
+def _resolve_model_path(model_path: str | None = None) -> Path:
+    """
+    权重路径优先级：
+    1. 函数参数 model_path
+    2. 环境变量 MODEL_PATH
+    3. 默认路径 algorithm/weights/best.pt
+    """
+    candidates: list[Path] = []
+
+    if model_path:
+        candidates.append(Path(model_path).expanduser())
+
+    env_model_path = os.getenv("MODEL_PATH")
+    if env_model_path:
+        candidates.append(Path(env_model_path).expanduser())
+
+    candidates.append(DEFAULT_MODEL_FILE)
+
+    for candidate in candidates:
+        resolved = candidate if candidate.is_absolute() else (BASE_DIR / candidate).resolve()
+        if resolved.exists():
+            return resolved
+
+    tried_paths = []
+    for candidate in candidates:
+        resolved = candidate if candidate.is_absolute() else (BASE_DIR / candidate).resolve()
+        tried_paths.append(str(resolved))
+
+    raise FileNotFoundError(
+        "模型权重不存在。已尝试以下路径：\n- " + "\n- ".join(tried_paths)
+    )
 
 
 def detect_video(
@@ -28,16 +66,22 @@ def detect_video(
     result_json_path: str | None = None,
     progress_callback=None,
 ):
-    model_file = Path(model_path) if model_path else (WEIGHTS_DIR / "best.pt")
+    model_file = _resolve_model_path(model_path)
 
-    if not model_file.exists():
-        raise FileNotFoundError(f"模型权重不存在: {model_file}")
+    output_video = Path(output_video_path)
+    output_video.parent.mkdir(parents=True, exist_ok=True)
+
+    if report_path:
+        Path(report_path).parent.mkdir(parents=True, exist_ok=True)
+
+    if result_json_path:
+        Path(result_json_path).parent.mkdir(parents=True, exist_ok=True)
 
     detector = RoadDamageDetector(str(model_file))
 
     results = detector.analyze_video(
         video_path=video_path,
-        output_path=output_video_path,
+        output_path=str(output_video),
         confidence=confidence,
         skip_frames=skip_frames,
         progress_callback=progress_callback,
@@ -57,10 +101,10 @@ def detect_video(
             ),
         },
         "raw_results": results,
+        "model_path": str(model_file),
     }
 
     if result_json_path:
-        Path(result_json_path).parent.mkdir(parents=True, exist_ok=True)
         with open(result_json_path, "w", encoding="utf-8") as f:
             json.dump(normalized, f, ensure_ascii=False, indent=2)
 
