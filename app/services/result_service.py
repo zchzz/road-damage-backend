@@ -1,36 +1,35 @@
-from app.core.task_manager import task_manager
-from app.services.file_service import build_result_urls
-
+from pathlib import Path
+from app.core.task_queue import task_queue
 
 def get_result(task_id: str, base_url: str):
-    task = task_manager.get_task(task_id)
+    task = task_queue.get_task(task_id)
     if not task:
         raise FileNotFoundError("任务不存在")
 
-    result = task_manager.get_result(task_id)
-    urls = build_result_urls(task_id, base_url)
+    status = task.get("status", "queued")
+    output_video_path = task.get("output_video_path") or ""
+    report_path = task.get("report_path") or ""
+    result_json_path = task.get("result_json_path") or ""
 
-    if not result:
-        return {
-            "task_id": task_id,
-            "status": task.get("status", "queued"),
-            "annotated_video_url": None,
-            "json_url": None,
-            "report_url": None,
-            "summary": {},
-        }
+    annotated_video_url = None
+    report_url = None
+    json_url = None
 
-    summary = result.get("summary", {})
-    raw_results = result.get("raw_results", {})
+    if output_video_path and Path(output_video_path).exists():
+        annotated_video_url = f"{base_url}/api/result-file/{task_id}/video"
 
-    response = {
+    if report_path and Path(report_path).exists():
+        report_url = f"{base_url}/api/result-file/{task_id}/report"
+
+    if result_json_path and Path(result_json_path).exists():
+        json_url = f"{base_url}/api/result-file/{task_id}/json"
+
+    return {
         "task_id": task_id,
-        "status": task.get("status", "completed"),
-        "annotated_video_url": urls["annotated_video_url"],
-        "json_url": urls["json_url"],
-        "report_url": urls["report_url"],
-        "summary": summary,
-        "raw_results": raw_results,
+        "status": status,
+        "annotated_video_url": annotated_video_url,
+        "json_url": json_url,
+        "report_url": report_url,
+        "summary": {},
+        "raw_results": {},
     }
-
-    return response
