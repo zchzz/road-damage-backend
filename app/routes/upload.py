@@ -1,123 +1,125 @@
+from __future__ import annotations
+
 import json
+import shutil
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
-from app.config import (
-    DEFAULT_CONFIDENCE,
-    DEFAULT_SKIP_FRAMES,
-    MAX_FILE_SIZE_MB,
-    TASKS_DIR,
-    UPLOADS_DIR,
-)
+from app.config import TASKS_DIR, UPLOADS_DIR
 
 router = APIRouter(tags=["upload"])
 
-ALLOWED_EXTS = {".mp4", ".avi", ".mov", ".mkv"}
-CHUNK_SIZE = 1024 * 1024  # 1MB
+
+ALLOWED_VIDEO_SUFFIXES = {
+    ".mp4",
+    ".mov",
+    ".avi",
+    ".mkv",
+    ".webm",
+    ".m4v",
+}
 
 
-async def save_upload_file_chunked(
-    file: UploadFile,
-    destination: Path,
-    max_size_bytes: int,
-    chunk_size: int = CHUNK_SIZE,
-) -> int:
-    destination.parent.mkdir(parents=True, exist_ok=True)
+def utcnow() -> str:
+    return datetime.utcnow().isoformat()
 
-    total_written = 0
 
-    with destination.open("wb") as f:
-        while True:
-            chunk = await file.read(chunk_size)
-            if not chunk:
-                break
+def write_json(path: Path, data: dict):
+    path.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
-            total_written += len(chunk)
-            if total_written > max_size_bytes:
-                f.close()
-                try:
-                    destination.unlink(missing_ok=True)
-                except Exception:
-                    pass
 
-                raise HTTPException(
-                    status_code=413,
-                    detail=f"上传文件过大，当前限制为 {MAX_FILE_SIZE_MB}MB",
-                )
+def sanitize_filename(filename: str) -> str:
+    name = Path(filename or "video.mp4").name.strip()
+    return name or "video.mp4"
 
-            f.write(chunk)
 
-    await file.close()
-    return total_written
+def validate_video_file(file: UploadFile):
+    filename = sanitize_filename(file.filename or "video.mp4")
+    suffix = Path(filename).suffix.lower()
+
+    if suffix not in ALLOWED_VIDEO_SUFFIXES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"不支持的文件类型：{suffix or 'unknown'}，请上传视频文件",
+        )
 
 
 @router.post("/upload")
 async def upload_video(
     file: UploadFile = File(...),
-    confidence: float = Form(DEFAULT_CONFIDENCE),
-    skip_frames: int = Form(DEFAULT_SKIP_FRAMES),
-    mode: str = Form("smoke"),
+    confidence: float = Form(0.25),
+    skip_frames: int = Form(1),
+    mode: Optional[str] = Form("real"),
 ):
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="文件名不能为空")
+    validate_video_file(file)
 
-    ext = Path(file.filename).suffix.lower()
-    if ext not in ALLOWED_EXTS:
-        raise HTTPException(status_code=400, detail="不支持的视频格式")
+    filename = sanitize_filename(file.filename or "video.mp4")
+    task_id = uuid.uuid4().hex
 
-    if not 0 <= confidence <= 1:
+    if confidence < 0 or confidence > 1:
         raise HTTPException(status_code=400, detail="confidence 必须在 0 到 1 之间")
 
-    if int(skip_frames) < 1:
+    if skip_frames < 1:
         raise HTTPException(status_code=400, detail="skip_frames 必须大于等于 1")
 
-    mode = (mode or "smoke").strip().lower()
-    if mode not in {"smoke", "real"}:
-        mode = "smoke"
+    normalized_mode = str(mode or "real").strip().lower()
+    if normalized_mode not in {"real", "smoke"}:
+        normalized_mode = "real"
 
-    task_id = str(uuid.uuid4())
-    saved_filename = f"{task_id}{ext}"
-    saved_path = UPLOADS_DIR / saved_filename
+    task_upload_dir = UPLOADS_DIR / task_id
+    task_upload_dir.mkdir(parents=True, exist_ok=True)
 
-    max_size_bytes = MAX_FILE_SIZE_MB * 1024 * 1024
-    file_size = await save_upload_file_chunked(
-        file=file,
-        destination=saved_path,
-        max_size_bytes=max_size_bytes,
-    )
+    saved_filename = f"input{Path(filename).suffix.lower() or '.mp4'}"
+    saved_path = task_upload_dir / saved_filename
 
-    now = datetime.now(timezone.utc).isoformat()
+    try:
+        with saved_path.open("wb") as f:
+            shutil.copyfileobj(file.file, f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"保存上传文件失败: {e!r}")
+
     task_data = {
         "task_id": task_id,
         "status": "pending",
+        "message": "文件上传成功，等待 worker 处理",
         "progress": 0,
-        "message": "任务已创建，等待处理",
-        "filename": file.filename,
+        "result_ready": False,
+        "filename": filename,
         "saved_filename": saved_filename,
-        "upload_path": str(saved_path),
-        "file_size": file_size,
-        "mode": mode,
+        "upload_path": str(saved_path.resolve()),
+        "upload_url": f"/static/uploads/{task_id}/{saved_filename}",
         "confidence": float(confidence),
         "skip_frames": int(skip_frames),
+        "mode": normalized_mode,
         "current_frame": 0,
         "total_frames": 0,
-        "result_ready": False,
-        "created_at": now,
-        "updated_at": now,
+        "worker_id": None,
+        "output_video_url": None,
+        "result_json_url": None,
+        "report_url": None,
+        "created_at": utcnow(),
+        "updated_at": utcnow(),
     }
 
     task_file = TASKS_DIR / f"{task_id}.json"
-    task_file.write_text(
-        json.dumps(task_data, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    write_json(task_file, task_data)
 
     return {
         "task_id": task_id,
-        "status": "pending",
-        "message": "任务创建成功",
-        "mode": mode,
+        "status": task_data["status"],
+        "message": task_data["message"],
+        "progress": task_data["progress"],
+        "filename": task_data["filename"],
+        "upload_url": task_data["upload_url"],
+        "confidence": task_data["confidence"],
+        "skip_frames": task_data["skip_frames"],
+        "mode": task_data["mode"],
+        "created_at": task_data["created_at"],
     }

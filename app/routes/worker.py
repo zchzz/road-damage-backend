@@ -140,7 +140,8 @@ async def complete_task(
         try:
             parsed_result = json.loads(result_json_path.read_text(encoding="utf-8"))
             summary = parsed_result.get("summary", {})
-            detections = parsed_result.get("detections", parsed_result.get("raw_results", []))
+            raw_results = parsed_result.get("raw_results", {})
+            detections = raw_results.get("detections", [])
         except Exception:
             parsed_result = {}
 

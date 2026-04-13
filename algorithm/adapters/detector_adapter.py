@@ -48,7 +48,7 @@ def detect_video(
     video_path: str,
     output_video_path: str,
     confidence: float = 0.3,
-    skip_frames: int = 5,
+    skip_frames: int = 1,
     model_path: str | None = None,
     report_path: str | None = None,
     result_json_path: str | None = None,
