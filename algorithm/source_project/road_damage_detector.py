@@ -2,7 +2,6 @@ import asyncio
 from pathlib import Path
 
 from app.config import OUTPUT_DIR, TASK_DATA_DIR
-from app.core.detector_runner import run_detection_pipeline
 from app.core.stream_manager import stream_manager
 from app.core.task_manager import task_manager
 from app.core.websocket_manager import ws_manager
