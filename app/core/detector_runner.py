@@ -1,9 +1,9 @@
+import asyncio
 from pathlib import Path
 import sys
-import asyncio
 
 CURRENT_FILE = Path(__file__).resolve()
-PROJECT_ROOT = CURRENT_FILE.parents[3]
+PROJECT_ROOT = CURRENT_FILE.parents[2]
 
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -40,5 +40,4 @@ async def run_detection_pipeline(
         result_json_path=str(result_json_path),
         progress_callback=sync_progress_callback,
     )
-
     return result

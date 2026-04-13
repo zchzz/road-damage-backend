@@ -25,6 +25,10 @@ async def run_detect_task(task_id: str) -> None:
             {
                 "status": "processing",
                 "progress": 0,
+                "current_frame": 0,
+                "total_frames": 0,
+                "detections": [],
+                "statistics": {},
                 "message": "任务开始处理",
             },
         )
@@ -38,13 +42,15 @@ async def run_detect_task(task_id: str) -> None:
             progress = int(payload.get("progress", 0))
             current_frame = int(payload.get("current_frame", 0))
             total_frames = int(payload.get("total_frames", 0))
-
+            detections = payload.get("detections", [])
+            statistics = payload.get("statistics", {})
+            frame_image = payload.get("frame_image", "")
             frame_bytes = payload.get("frame_bytes", b"")
-            print(f"[stream] task={task_id}, frame_bytes_len={len(frame_bytes) if frame_bytes else 0}")
+
             if frame_bytes:
                 await stream_manager.update_frame(task_id, frame_bytes)
 
-            if total_frames > 0 and current_frame > 0:
+            if total_frames > 0 and current_frame >= 0:
                 message = f"正在分析第 {current_frame} / {total_frames} 帧"
             elif progress >= 100:
                 message = "检测完成，正在整理结果"
@@ -56,6 +62,11 @@ async def run_detect_task(task_id: str) -> None:
                 {
                     "status": "processing",
                     "progress": progress,
+                    "current_frame": current_frame,
+                    "total_frames": total_frames,
+                    "detections": detections,
+                    "statistics": statistics,
+                    "frame_image": frame_image,
                     "message": message,
                 },
             )
@@ -68,8 +79,9 @@ async def run_detect_task(task_id: str) -> None:
                         "progress": progress,
                         "current_frame": current_frame,
                         "total_frames": total_frames,
-                        "detections": payload.get("detections", []),
-                        "statistics": payload.get("statistics", {}),
+                        "detections": detections,
+                        "statistics": statistics,
+                        "frame_image": frame_image,
                         "message": message,
                     },
                 )
@@ -100,6 +112,8 @@ async def run_detect_task(task_id: str) -> None:
                 "summary": summary,
                 "total_detections": summary.get("total_detections", 0),
                 "damage_types": damage_types,
+                "current_frame": result.get("raw_results", {}).get("total_frames", 0),
+                "total_frames": result.get("raw_results", {}).get("total_frames", 0),
             },
         )
 
@@ -111,8 +125,8 @@ async def run_detect_task(task_id: str) -> None:
                 {
                     "type": "completed",
                     "progress": 100,
-                    "current_frame": 0,
-                    "total_frames": 0,
+                    "current_frame": result.get("raw_results", {}).get("total_frames", 0),
+                    "total_frames": result.get("raw_results", {}).get("total_frames", 0),
                     "detections": [],
                     "statistics": damage_types,
                     "message": "检测完成",
