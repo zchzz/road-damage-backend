@@ -11,7 +11,7 @@ from app.routes.ws import router as ws_router
 
 app = FastAPI(
     title="Road Damage Video Analysis API",
-    version="2.0.0"
+    version="2.0.0",
 )
 
 app.add_middleware(
@@ -26,6 +26,7 @@ app.mount("/static/outputs", StaticFiles(directory=str(OUTPUTS_DIR)), name="outp
 app.mount("/static/tasks", StaticFiles(directory=str(TASKS_DIR)), name="tasks")
 app.mount("/static/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
+# 统一只在这里加一次 /api 前缀
 app.include_router(upload_router, prefix="/api")
 app.include_router(task_router, prefix="/api")
 app.include_router(result_router, prefix="/api")
@@ -36,5 +37,5 @@ app.include_router(ws_router)
 async def root():
     return {
         "message": "Road Damage Video Analysis API",
-        "status": "ok"
+        "status": "ok",
     }
