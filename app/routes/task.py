@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
@@ -26,6 +25,8 @@ async def get_task(task_id: str):
         "current_frame": task_data.get("current_frame", 0),
         "total_frames": task_data.get("total_frames", 0),
         "result_ready": task_data.get("result_ready", False),
+        "output_video_url": task_data.get("output_video_url"),
+        "report_url": task_data.get("report_url"),
         "created_at": task_data.get("created_at"),
-        "updated_at": task_data.get("updated_at")
+        "updated_at": task_data.get("updated_at"),
     }

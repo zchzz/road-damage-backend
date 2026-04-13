@@ -14,6 +14,7 @@ async def upload_video(
     file: UploadFile = File(...),
     confidence: float = Form(DEFAULT_CONFIDENCE),
     skip_frames: int = Form(DEFAULT_SKIP_FRAMES),
+    mode: str = Form("smoke"),
 ):
     if not file.filename:
         raise HTTPException(status_code=400, detail="文件名不能为空")
@@ -22,6 +23,10 @@ async def upload_video(
     allowed_exts = {".mp4", ".avi", ".mov", ".mkv"}
     if ext not in allowed_exts:
         raise HTTPException(status_code=400, detail="不支持的视频格式")
+
+    mode = (mode or "smoke").strip().lower()
+    if mode not in {"smoke", "real"}:
+        mode = "smoke"
 
     task_id = str(uuid.uuid4())
     saved_filename = f"{task_id}{ext}"
@@ -40,7 +45,7 @@ async def upload_video(
         "filename": file.filename,
         "saved_filename": saved_filename,
         "upload_path": str(saved_path),
-        "mode": "video",
+        "mode": mode,
         "confidence": confidence,
         "skip_frames": skip_frames,
         "current_frame": 0,
@@ -56,5 +61,6 @@ async def upload_video(
     return {
         "task_id": task_id,
         "status": "pending",
-        "message": "任务创建成功"
+        "message": "任务创建成功",
+        "mode": mode,
     }
