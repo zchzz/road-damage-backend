@@ -2,52 +2,39 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from app.config import CORS_ORIGINS, OUTPUTS_DIR, TASKS_DIR, UPLOADS_DIR
 from app.routes.upload import router as upload_router
 from app.routes.task import router as task_router
 from app.routes.result import router as result_router
 from app.routes.worker import router as worker_router
-from app.routes.result_file import router as result_file_router
-
-from app.config import (
-    APP_NAME,
-    APP_VERSION,
-    CORS_ORIGINS,
-    OUTPUT_DIR,
-    TASK_DATA_DIR,
-    ensure_directories,
-)
-
-ensure_directories()
+from app.routes.ws import router as ws_router
 
 app = FastAPI(
-    title=APP_NAME,
-    version=APP_VERSION,
+    title="Road Damage Video Analysis API",
+    version="2.0.0"
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS if CORS_ORIGINS else ["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 只保留当前离线任务队列模式需要的路由
-app.include_router(upload_router)
-app.include_router(task_router)
-app.include_router(result_router)
-app.include_router(worker_router)
-app.include_router(result_file_router)
+app.mount("/static/outputs", StaticFiles(directory=str(OUTPUTS_DIR)), name="outputs")
+app.mount("/static/tasks", StaticFiles(directory=str(TASKS_DIR)), name="tasks")
+app.mount("/static/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
-# 静态目录
-app.mount("/static/outputs", StaticFiles(directory=OUTPUT_DIR), name="outputs")
-app.mount("/static/tasks", StaticFiles(directory=TASK_DATA_DIR), name="tasks")
-
+app.include_router(upload_router, prefix="/api")
+app.include_router(task_router, prefix="/api")
+app.include_router(result_router, prefix="/api")
+app.include_router(worker_router, prefix="/api")
+app.include_router(ws_router)
 
 @app.get("/")
 async def root():
     return {
-        "message": "Road Damage Detection Backend is running",
-        "version": APP_VERSION,
-        "mode": "queue-worker"
+        "message": "Road Damage Video Analysis API",
+        "status": "ok"
     }

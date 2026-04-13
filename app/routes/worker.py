@@ -1,115 +1,101 @@
-from pathlib import Path
-import shutil
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
-from fastapi.responses import FileResponse
+import json
+from datetime import datetime
 
-from app.core.task_queue import task_queue
+from fastapi import APIRouter, HTTPException
 
-router = APIRouter(prefix="/api/worker", tags=["worker"])
+from app.config import OUTPUTS_DIR, TASKS_DIR
 
+router = APIRouter(tags=["worker"])
 
-@router.post("/claim")
-async def claim_task(worker_id: str = Form(...)):
-    task = task_queue.claim_next_task(worker_id)
-    if not task:
-        return {"task": None}
+def list_task_files():
+    return list(TASKS_DIR.glob("*.json"))
+
+def read_json(path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+def write_json(path, data):
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+@router.post("/worker/claim")
+async def claim_task():
+    for task_file in list_task_files():
+        task = read_json(task_file)
+        if task.get("status") == "pending":
+            task["status"] = "processing"
+            task["message"] = "任务已被 worker 领取"
+            task["updated_at"] = datetime.utcnow().isoformat()
+            write_json(task_file, task)
+
+            return {
+                "task_id": task["task_id"],
+                "filename": task["filename"],
+                "saved_filename": task["saved_filename"],
+                "confidence": task.get("confidence", 0.25),
+                "skip_frames": task.get("skip_frames", 1),
+                "upload_path": task.get("upload_path")
+            }
 
     return {
-        "task": {
-            "task_id": task["task_id"],
-            "filename": task["filename"],
-            "mode": task["mode"],
-            "confidence": task["confidence"],
-            "skip_frames": task["skip_frames"],
-            "download_url": f"/api/worker/download/{task['task_id']}",
-        }
+        "task_id": None,
+        "message": "暂无待处理任务"
     }
 
-
-@router.get("/download/{task_id}")
-async def download_task_file(task_id: str):
-    task = task_queue.get_task(task_id)
-    if not task:
+@router.post("/worker/progress/{task_id}")
+async def update_progress(task_id: str, payload: dict):
+    task_file = TASKS_DIR / f"{task_id}.json"
+    if not task_file.exists():
         raise HTTPException(status_code=404, detail="任务不存在")
 
-    path = Path(task["upload_path"])
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="原始视频不存在")
+    task = read_json(task_file)
+    task["status"] = "processing"
+    task["progress"] = payload.get("progress", task.get("progress", 0))
+    task["message"] = payload.get("message", task.get("message", "处理中"))
+    task["current_frame"] = payload.get("current_frame", task.get("current_frame", 0))
+    task["total_frames"] = payload.get("total_frames", task.get("total_frames", 0))
+    task["updated_at"] = datetime.utcnow().isoformat()
+    write_json(task_file, task)
 
-    return FileResponse(path, filename=path.name)
-
-
-@router.post("/progress/{task_id}")
-async def report_progress(
-    task_id: str,
-    progress: int = Form(...),
-    message: str = Form("处理中"),
-):
-    task = task_queue.get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="任务不存在")
-
-    task_queue.update_task(task_id, {
-        "progress": max(0, min(progress, 100)),
-        "message": message,
-        "status": "processing",
-    })
     return {"ok": True}
 
-
-@router.post("/complete/{task_id}")
-async def complete_task(
-    task_id: str,
-    result_video: UploadFile = File(...),
-    result_json: UploadFile | None = File(None),
-    report_html: UploadFile | None = File(None),
-):
-    task = task_queue.get_task(task_id)
-    if not task:
+@router.post("/worker/complete/{task_id}")
+async def complete_task(task_id: str, payload: dict):
+    task_file = TASKS_DIR / f"{task_id}.json"
+    if not task_file.exists():
         raise HTTPException(status_code=404, detail="任务不存在")
 
-    output_video_path = Path(task["output_video_path"])
-    output_video_path.parent.mkdir(parents=True, exist_ok=True)
+    task = read_json(task_file)
+    task["status"] = "completed"
+    task["progress"] = 100
+    task["message"] = payload.get("message", "任务处理完成")
+    task["result_ready"] = True
+    task["updated_at"] = datetime.utcnow().isoformat()
+    write_json(task_file, task)
 
-    with output_video_path.open("wb") as f:
-        shutil.copyfileobj(result_video.file, f)
+    output_dir = OUTPUTS_DIR / task_id
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    updates = {
+    result_data = {
+        "task_id": task_id,
         "status": "completed",
-        "progress": 100,
-        "message": "检测完成",
-        "output_video_path": str(output_video_path),
+        "summary": payload.get("summary", {}),
+        "detections": payload.get("detections", []),
+        "output_video_url": payload.get("output_video_url"),
+        "report_url": payload.get("report_url"),
     }
+    write_json(output_dir / "result.json", result_data)
 
-    if result_json is not None:
-        json_path = Path(task["result_json_path"])
-        json_path.parent.mkdir(parents=True, exist_ok=True)
-        with json_path.open("wb") as f:
-            shutil.copyfileobj(result_json.file, f)
-        updates["result_json_path"] = str(json_path)
-
-    if report_html is not None:
-        report_path = Path(task["report_path"])
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        with report_path.open("wb") as f:
-            shutil.copyfileobj(report_html.file, f)
-        updates["report_path"] = str(report_path)
-
-    task_queue.update_task(task_id, updates)
     return {"ok": True}
 
-
-@router.post("/fail/{task_id}")
-async def fail_task(
-    task_id: str,
-    message: str = Form("处理失败"),
-):
-    task = task_queue.get_task(task_id)
-    if not task:
+@router.post("/worker/fail/{task_id}")
+async def fail_task(task_id: str, payload: dict):
+    task_file = TASKS_DIR / f"{task_id}.json"
+    if not task_file.exists():
         raise HTTPException(status_code=404, detail="任务不存在")
 
-    task_queue.update_task(task_id, {
-        "status": "failed",
-        "message": message,
-    })
+    task = read_json(task_file)
+    task["status"] = "failed"
+    task["message"] = payload.get("message", "任务处理失败")
+    task["updated_at"] = datetime.utcnow().isoformat()
+    write_json(task_file, task)
+
     return {"ok": True}
