@@ -1,5 +1,7 @@
 from pathlib import Path
+
 from app.core.task_queue import task_queue
+
 
 def get_result(task_id: str, base_url: str):
     task = task_queue.get_task(task_id)
@@ -7,9 +9,9 @@ def get_result(task_id: str, base_url: str):
         raise FileNotFoundError("任务不存在")
 
     status = task.get("status", "queued")
-    output_video_path = task.get("output_video_path") or ""
-    report_path = task.get("report_path") or ""
-    result_json_path = task.get("result_json_path") or ""
+    output_video_path = task.get("output_video_path", "")
+    report_path = task.get("report_path", "")
+    result_json_path = task.get("result_json_path", "")
 
     annotated_video_url = None
     report_url = None
