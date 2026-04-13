@@ -1,19 +1,13 @@
 from pathlib import Path
 import json
 import os
-import sys
+
+from algorithm.source_project.road_damage_detector import RoadDamageDetector
 
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-SOURCE_PROJECT_DIR = BASE_DIR / "algorithm" / "source_project"
 WEIGHTS_DIR = BASE_DIR / "algorithm" / "weights"
 DEFAULT_MODEL_FILE = WEIGHTS_DIR / "best.pt"
-
-
-if str(SOURCE_PROJECT_DIR) not in sys.path:
-    sys.path.insert(0, str(SOURCE_PROJECT_DIR))
-
-from road_damage_detector import RoadDamageDetector
 
 
 def _normalize_class_distribution(class_distribution: dict | None) -> dict:
@@ -24,12 +18,6 @@ def _normalize_class_distribution(class_distribution: dict | None) -> dict:
 
 
 def _resolve_model_path(model_path: str | None = None) -> Path:
-    """
-    权重路径优先级：
-    1. 函数参数 model_path
-    2. 环境变量 MODEL_PATH
-    3. 默认路径 algorithm/weights/best.pt
-    """
     candidates: list[Path] = []
 
     if model_path:
